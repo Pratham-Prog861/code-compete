@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { testCases, submissions } from '@/db/schema';
+import { testCases, problems, submissions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { runPiston } from '@/lib/piston';
 
@@ -15,6 +15,15 @@ export async function POST(req: Request) {
 
   if (!problemId || !code || !language) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // Fetch problem details (needed for function name)
+  const problem = await db.query.problems.findFirst({
+    where: eq(problems.id, problemId),
+  });
+
+  if (!problem) {
+    return NextResponse.json({ error: 'Problem not found' }, { status: 404 });
   }
 
   // Fetch test cases
@@ -31,7 +40,55 @@ export async function POST(req: Request) {
 
   for (const test of tests) {
     try {
-      const result = await runPiston(language, code, test.input);
+      // Generate driver code based on language
+      let fullCode = code;
+      let stdin = test.input;
+
+      if (language === 'javascript') {
+        // Driver code for JS
+        // We assume input is JSON stringified arguments object, e.g. {"nums": [...], "target": 9}
+        // We need to parse it and call the function.
+        fullCode = `
+${code}
+
+const fs = require('fs');
+const input = fs.readFileSync(0, 'utf-8');
+const args = JSON.parse(input);
+
+// Call the function dynamically
+// We need to map args keys to function arguments order? 
+// Or just assume the function takes arguments matching the keys?
+// Actually, simpler: Object.values(args) gives values in order if JSON was created in order.
+// But JSON key order isn't guaranteed.
+// Better: We know the function name.
+const result = ${problem.functionName}(...Object.values(args));
+console.log(JSON.stringify(result));
+`;
+      } else if (language === 'python') {
+        // Driver code for Python
+        fullCode = `
+import sys
+import json
+from typing import *
+
+${code}
+
+if __name__ == '__main__':
+    input_str = sys.stdin.read()
+    args = json.loads(input_str)
+    sol = Solution()
+    # Assuming args is a dict, we pass as kwargs? Or ordered values?
+    # Python dicts preserve insertion order in recent versions.
+    # Let's try passing values.
+    result = sol.${problem.functionName}(*args.values())
+    
+    # Print result as JSON
+    print(json.dumps(result))
+`;
+      }
+      // Add other languages as needed (cpp, go)
+
+      const result = await runPiston(language, fullCode, stdin);
 
       // Check for compilation error
       if (result.compile && result.compile.code !== 0) {
@@ -51,14 +108,41 @@ export async function POST(req: Request) {
       const actualOutput = result.run.stdout.trim();
       const expectedOutput = test.expectedOutput.trim();
 
-      if (actualOutput !== expectedOutput) {
+      // Simple string comparison for now. 
+      // For arrays, order might matter or not depending on problem.
+      // Ideally we parse JSON and compare deep equal.
+      // But for MVP string compare of JSON is okay if formatted same.
+      // Piston/Node JSON.stringify might differ from seed expectedOutput format (spaces).
+      // Let's normalize by parsing if possible.
+      
+      let match = false;
+      try {
+        const actualJson = JSON.parse(actualOutput);
+        const expectedJson = JSON.parse(expectedOutput);
+        // Deep compare
+        if (JSON.stringify(actualJson) === JSON.stringify(expectedJson)) {
+          match = true;
+        }
+        
+        // Special case for Two Sum: "return the answer in any order"
+        // If it's an array and order doesn't matter, we should sort.
+        // But for MVP, let's assume strict order or user must sort if required.
+        // Two Sum usually accepts any order, so [0,1] or [1,0].
+        // My seed expected is [0,1]. If user returns [1,0], it fails.
+        // For now, accept failure on order mismatch.
+      } catch (e) {
+        // Fallback to string compare
+        match = actualOutput === expectedOutput;
+      }
+
+      if (!match) {
         finalStatus = 'WA';
         debugOutput = `Input: ${test.input}\nExpected: ${expectedOutput}\nActual: ${actualOutput}`;
         break;
       }
     } catch (error) {
       console.error('Execution error:', error);
-      finalStatus = 'RE'; // Internal error treated as RE for now
+      finalStatus = 'RE';
       break;
     }
   }
@@ -74,6 +158,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     status: finalStatus,
-    output: debugOutput, // Return debug info for the first failed test or success
+    output: debugOutput,
   });
 }

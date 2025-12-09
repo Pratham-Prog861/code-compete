@@ -6,10 +6,11 @@ export const statusEnum = pgEnum('status', ['AC', 'WA', 'RE', 'CE', 'TLE']);
 export const problems = pgTable('problems', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),
+  difficulty: difficultyEnum('difficulty').notNull(),
   slug: text('slug').unique().notNull(),
   description: text('description').notNull(), // markdown text
-  difficulty: difficultyEnum('difficulty').notNull(),
   starterCode: jsonb('starter_code').notNull(), // { python: "...", javascript: "..." }
+  functionName: text('function_name').notNull(), // e.g. "twoSum"
 });
 
 export const testCases = pgTable('test_cases', {
