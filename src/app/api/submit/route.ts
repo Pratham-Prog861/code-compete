@@ -1,20 +1,29 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { db } from '@/db';
-import { testCases, problems, submissions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
-import { runPiston } from '@/lib/piston';
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import {
+  testCases,
+  problems,
+  submissions,
+  solvedProblems,
+  userStats,
+} from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { runPiston } from "@/lib/piston";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { problemId, code, language } = await req.json();
 
   if (!problemId || !code || !language) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing required fields" },
+      { status: 400 }
+    );
   }
 
   // Fetch problem details (needed for function name)
@@ -23,7 +32,7 @@ export async function POST(req: Request) {
   });
 
   if (!problem) {
-    return NextResponse.json({ error: 'Problem not found' }, { status: 404 });
+    return NextResponse.json({ error: "Problem not found" }, { status: 404 });
   }
 
   // Fetch test cases
@@ -32,11 +41,17 @@ export async function POST(req: Request) {
   });
 
   if (tests.length === 0) {
-    return NextResponse.json({ error: 'No test cases found' }, { status: 404 });
+    return NextResponse.json({ error: "No test cases found" }, { status: 404 });
   }
 
-  let finalStatus: 'AC' | 'WA' | 'RE' | 'CE' | 'TLE' = 'AC';
-  let debugOutput = '';
+  let finalStatus: "AC" | "WA" | "RE" | "CE" | "TLE" = "AC";
+  let debugOutput = "";
+  const testResults: Array<{
+    input: string;
+    expected: string;
+    actual: string;
+    passed: boolean;
+  }> = [];
 
   for (const test of tests) {
     try {
@@ -44,7 +59,7 @@ export async function POST(req: Request) {
       let fullCode = code;
       let stdin = test.input;
 
-      if (language === 'javascript') {
+      if (language === "javascript") {
         // Driver code for JS
         // We assume input is JSON stringified arguments object, e.g. {"nums": [...], "target": 9}
         // We need to parse it and call the function.
@@ -64,7 +79,7 @@ const args = JSON.parse(input);
 const result = ${problem.functionName}(...Object.values(args));
 console.log(JSON.stringify(result));
 `;
-      } else if (language === 'python') {
+      } else if (language === "python") {
         // Driver code for Python
         fullCode = `
 import sys
@@ -92,15 +107,27 @@ if __name__ == '__main__':
 
       // Check for compilation error
       if (result.compile && result.compile.code !== 0) {
-        finalStatus = 'CE';
+        finalStatus = "CE";
         debugOutput = result.compile.output;
+        testResults.push({
+          input: test.input,
+          expected: test.expectedOutput,
+          actual: "",
+          passed: false,
+        });
         break;
       }
 
       // Check for runtime error
       if (result.run.code !== 0) {
-        finalStatus = 'RE';
-        debugOutput = result.run.output;
+        finalStatus = "RE";
+        debugOutput = result.run.stderr || result.run.output;
+        testResults.push({
+          input: test.input,
+          expected: test.expectedOutput,
+          actual: result.run.stderr || result.run.output,
+          passed: false,
+        });
         break;
       }
 
@@ -108,13 +135,13 @@ if __name__ == '__main__':
       const actualOutput = result.run.stdout.trim();
       const expectedOutput = test.expectedOutput.trim();
 
-      // Simple string comparison for now. 
+      // Simple string comparison for now.
       // For arrays, order might matter or not depending on problem.
       // Ideally we parse JSON and compare deep equal.
       // But for MVP string compare of JSON is okay if formatted same.
       // Piston/Node JSON.stringify might differ from seed expectedOutput format (spaces).
       // Let's normalize by parsing if possible.
-      
+
       let match = false;
       try {
         const actualJson = JSON.parse(actualOutput);
@@ -123,7 +150,7 @@ if __name__ == '__main__':
         if (JSON.stringify(actualJson) === JSON.stringify(expectedJson)) {
           match = true;
         }
-        
+
         // Special case for Two Sum: "return the answer in any order"
         // If it's an array and order doesn't matter, we should sort.
         // But for MVP, let's assume strict order or user must sort if required.
@@ -135,14 +162,20 @@ if __name__ == '__main__':
         match = actualOutput === expectedOutput;
       }
 
+      testResults.push({
+        input: test.input,
+        expected: expectedOutput,
+        actual: actualOutput,
+        passed: match,
+      });
+
       if (!match) {
-        finalStatus = 'WA';
-        debugOutput = `Input: ${test.input}\nExpected: ${expectedOutput}\nActual: ${actualOutput}`;
+        finalStatus = "WA";
         break;
       }
     } catch (error) {
-      console.error('Execution error:', error);
-      finalStatus = 'RE';
+      console.error("Execution error:", error);
+      finalStatus = "RE";
       break;
     }
   }
@@ -156,8 +189,61 @@ if __name__ == '__main__':
     status: finalStatus,
   });
 
+  // If AC, check if first time solving and update stats
+  let isFirstSolve = false;
+  let pointsEarned = 0;
+
+  if (finalStatus === "AC") {
+    // Check if user has already solved this problem
+    const existingSolve = await db.query.solvedProblems.findFirst({
+      where: and(
+        eq(solvedProblems.userId, userId),
+        eq(solvedProblems.problemId, problemId)
+      ),
+    });
+
+    if (!existingSolve) {
+      // First time solving this problem
+      isFirstSolve = true;
+
+      // Record the solve
+      await db.insert(solvedProblems).values({
+        userId,
+        problemId,
+      });
+
+      // Calculate points based on difficulty
+      pointsEarned = problem.points || 10;
+
+      // Update or create user stats
+      const existingStats = await db.query.userStats.findFirst({
+        where: eq(userStats.userId, userId),
+      });
+
+      if (existingStats) {
+        await db
+          .update(userStats)
+          .set({
+            totalPoints: existingStats.totalPoints + pointsEarned,
+            problemsSolved: existingStats.problemsSolved + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(userStats.userId, userId));
+      } else {
+        await db.insert(userStats).values({
+          userId,
+          totalPoints: pointsEarned,
+          problemsSolved: 1,
+        });
+      }
+    }
+  }
+
   return NextResponse.json({
     status: finalStatus,
     output: debugOutput,
+    testResults,
+    isFirstSolve,
+    pointsEarned,
   });
 }

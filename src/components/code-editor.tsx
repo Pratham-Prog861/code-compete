@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Play, Send } from "lucide-react";
+import { Loader2, Play, Check, X, Trophy } from "lucide-react";
 
 interface CodeEditorProps {
   problemId: number;
@@ -35,6 +35,9 @@ export default function CodeEditor({
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<any[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [pointsEarned, setPointsEarned] = useState(0);
 
   const handleLanguageChange = (value: string) => {
     setLanguage(value);
@@ -45,6 +48,8 @@ export default function CodeEditor({
     setIsRunning(true);
     setOutput("Running...");
     setStatus(null);
+    setTestResults([]);
+    setShowSuccess(false);
 
     try {
       const res = await fetch("/api/submit", {
@@ -65,7 +70,21 @@ export default function CodeEditor({
       }
 
       setStatus(data.status);
-      setOutput(data.output || "No output");
+      setTestResults(data.testResults || []);
+      
+      if (data.status === 'AC') {
+        if (data.isFirstSolve) {
+          setShowSuccess(true);
+          setPointsEarned(data.pointsEarned);
+        }
+        setOutput('All test cases passed! ✓');
+      } else if (data.status === 'CE') {
+        setOutput(`Compilation Error:\n${data.output}`);
+      } else if (data.status === 'RE') {
+        setOutput(`Runtime Error:\n${data.output}`);
+      } else if (data.status === 'WA') {
+        setOutput('Wrong Answer - See test results below');
+      }
     } catch (error) {
       setOutput("Failed to submit code");
     } finally {
@@ -124,9 +143,11 @@ export default function CodeEditor({
             <span
               className={
                 status === "AC"
-                  ? "text-green-500"
+                  ? "text-green-500 font-bold"
                   : status === "WA"
                   ? "text-red-500"
+                  : status === "CE"
+                  ? "text-orange-500"
                   : "text-yellow-500"
               }
             >
@@ -134,8 +155,68 @@ export default function CodeEditor({
             </span>
           )}
         </div>
-        <div className="p-4 font-mono text-sm overflow-auto flex-1 whitespace-pre-wrap">
-          {output || "Run your code to see output..."}
+        
+        {showSuccess && (
+          <div className="bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-800 p-4">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+              <Trophy className="h-5 w-5" />
+              <div>
+                <p className="font-bold">Congratulations! 🎉</p>
+                <p className="text-sm">You solved this problem and earned {pointsEarned} points!</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 overflow-auto flex-1">
+          <div className="font-mono text-sm whitespace-pre-wrap mb-4">
+            {output || "Run your code to see output..."}
+          </div>
+          
+          {testResults.length > 0 && (
+            <div className="space-y-2">
+              <p className="font-semibold text-sm mb-2">Test Results:</p>
+              {testResults.map((result, index) => (
+                <div
+                  key={index}
+                  className={`p-3 rounded border text-xs ${
+                    result.passed
+                      ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                      : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    {result.passed ? (
+                      <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    )}
+                    <span className="font-semibold">
+                      Test Case {index + 1}
+                    </span>
+                  </div>
+                  <div className="space-y-1 ml-6">
+                    <div>
+                      <span className="text-muted-foreground">Input: </span>
+                      <span className="font-mono">{result.input}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Expected: </span>
+                      <span className="font-mono">{result.expected}</span>
+                    </div>
+                    {!result.passed && (
+                      <div>
+                        <span className="text-muted-foreground">Your Output: </span>
+                        <span className="font-mono text-red-600 dark:text-red-400">
+                          {result.actual || "(no output)"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { submissions } from "@/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { userStats } from "@/db/schema";
+import { desc } from "drizzle-orm";
 import Navbar from "@/components/navbar";
 import {
   Table,
@@ -10,21 +10,47 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Trophy } from "lucide-react";
+import { Trophy, Medal } from "lucide-react";
+import { clerkClient } from "@clerk/nextjs/server";
 
 export default async function LeaderboardPage() {
-  // Count unique AC problems per user
+  // Get user stats ordered by points
   const leaderboard = await db
-    .select({
-      userId: submissions.userId,
-      solvedCount:
-        sql<number>`count(distinct ${submissions.problemId})`.mapWith(Number),
-    })
-    .from(submissions)
-    .where(eq(submissions.status, "AC"))
-    .groupBy(submissions.userId)
-    .orderBy(desc(sql`count(distinct ${submissions.problemId})`))
+    .select()
+    .from(userStats)
+    .orderBy(desc(userStats.totalPoints))
     .limit(50);
+
+  // Fetch user details from Clerk
+  const client = await clerkClient();
+  const userIds = leaderboard.map((entry) => entry.userId);
+  const users = await client.users.getUserList({ userId: userIds });
+
+  // Create a map of userId to user details
+  const userMap = new Map(
+    users.data.map((user) => [
+      user.id,
+      {
+        name: user.firstName || user.username || user.emailAddresses[0]?.emailAddress.split("@")[0] || "Anonymous",
+        imageUrl: user.imageUrl,
+        email: user.emailAddresses[0]?.emailAddress,
+      },
+    ])
+  );
+
+  const getRankColor = (rank: number) => {
+    if (rank === 1) return "text-yellow-500";
+    if (rank === 2) return "text-gray-400";
+    if (rank === 3) return "text-amber-600";
+    return "text-muted-foreground";
+  };
+
+  const getRankIcon = (rank: number) => {
+    if (rank <= 3) {
+      return <Medal className={`h-5 w-5 ${getRankColor(rank)}`} />;
+    }
+    return null;
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -42,35 +68,72 @@ export default async function LeaderboardPage() {
                 <TableHead className="w-[100px]">Rank</TableHead>
                 <TableHead>User</TableHead>
                 <TableHead className="text-right">Problems Solved</TableHead>
+                <TableHead className="text-right">Points</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {leaderboard.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={3}
+                    colSpan={4}
                     className="text-center h-24 text-muted-foreground"
                   >
                     No submissions yet. Be the first to solve a problem!
                   </TableCell>
                 </TableRow>
               ) : (
-                leaderboard.map((entry, index) => (
-                  <TableRow key={entry.userId}>
-                    <TableCell className="font-medium">#{index + 1}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 rounded-full bg-primary/20" />
-                        <span className="font-mono text-sm">
-                          {entry.userId}
+                leaderboard.map((entry, index) => {
+                  const rank = index + 1;
+                  const userInfo = userMap.get(entry.userId);
+                  const displayName = userInfo?.name || "Anonymous";
+                  const initials = displayName.substring(0, 2).toUpperCase();
+                  
+                  return (
+                    <TableRow key={entry.userId}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {getRankIcon(rank)}
+                          <span className={getRankColor(rank)}>#{rank}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {userInfo?.imageUrl ? (
+                            <img
+                              src={userInfo.imageUrl}
+                              alt={displayName}
+                              className="h-8 w-8 rounded-full"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                              <span className="text-xs font-bold">
+                                {initials}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">
+                              {displayName}
+                            </span>
+                            {userInfo?.email && (
+                              <span className="text-xs text-muted-foreground">
+                                {userInfo.email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {entry.problemsSolved}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-bold text-primary">
+                          {entry.totalPoints}
                         </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {entry.solvedCount}
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
