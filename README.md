@@ -1,163 +1,222 @@
-# Code Compete 🏆
+# CodeCompete 🏆
 
-A competitive coding platform built with Next.js, featuring real-time code execution, problem tracking, and leaderboard rankings.
+A modern competitive coding platform for mastering algorithmic problem-solving. Built with Next.js 16, featuring real-time code execution, 25+ curated problems, and global leaderboards.
 
 ## Features ✨
 
-- **Problem Solving**: Solve coding problems with multiple difficulty levels (Easy, Medium, Hard)
-- **Multi-Language Support**: Write solutions in JavaScript, Python, C++, and Go
-- **Real-Time Code Execution**: Execute code using Piston API with instant feedback
-- **Test Case Validation**: Detailed test results showing input, expected output, and actual output
-- **Progress Tracking**: Track solved problems and earn points for each solution
-- **Leaderboard**: Compete with other users and climb the rankings
-- **Authentication**: Secure user authentication with Clerk
-- **Modern UI**: Beautiful, responsive interface built with Tailwind CSS and shadcn/ui
+### Core Functionality
+
+- **25+ Curated Problems** - From Easy to Hard difficulty levels
+- **Real-Time Code Execution** - Powered by Piston API with instant feedback
+- **Multi-Language Support** - Write in JavaScript and Python
+- **Smart Test Validation** - Per-problem comparison rules (strict, unordered, numeric tolerance)
+- **Hidden Test Cases** - Problems include hidden tests for fair evaluation
+
+### Progress & Competition
+
+- **Points System** - Earn points on first solve (10-20 points per problem)
+- **Global Leaderboards** - Compete with developers worldwide
+- **Profile Dashboard** - Track your submissions, solved problems, and language stats
+- **Problem Status** - Visual indicators for Solved/Attempted/Unsolved
+
+### Security & Performance
+
+- **Rate Limiting** - 10 requests per minute per user on submissions
+- **Input Sanitization** - DOMPurify for safe markdown rendering
+- **Request Validation** - Zod schema validation with size limits
+- **Database Transactions** - Atomic solve + points updates
+- **Composite Unique Constraints** - Prevent duplicate solves
+
+### Design System
+
+- **Dark Theme** - Elegant dark UI with cyan accent colors
+- **Responsive Design** - Mobile-first approach with tabs on smaller screens
+- **Typography** - Custom display font (Syne) + body font (Instrument Sans)
+- **Animations** - Skeleton loaders, staggered reveals, hover effects
+- **Accessibility** - Focus states, reduced motion support
 
 ## Tech Stack 🛠️
 
-- **Framework**: Next.js 16 (App Router)
-- **Database**: PostgreSQL with Neon
-- **ORM**: Drizzle ORM
-- **Authentication**: Clerk
-- **Code Editor**: Monaco Editor (VS Code editor)
-- **Code Execution**: Piston API
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui, Radix UI
-- **Markdown Rendering**: react-markdown with syntax highlighting
+| Category | Technology |
+|----------|-----------|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| Database | PostgreSQL (Neon Serverless) |
+| ORM | Drizzle ORM |
+| Authentication | Clerk |
+| Code Editor | Monaco Editor |
+| Code Execution | Piston API |
+| Styling | Tailwind CSS v4 |
+| UI Components | shadcn/ui, Radix UI |
+| Markdown | react-markdown + DOMPurify |
+| Validation | Zod |
+| Rate Limiting | rate-limiter-flexible |
 
 ## Getting Started 🚀
 
 ### Prerequisites
 
-- Node.js 18+ installed
+- Node.js 20+
 - PostgreSQL database (Neon recommended)
 - Clerk account for authentication
 
-### Installation
+### Environment Setup
 
-1.Clone the repository:
+1. Clone and install:
 
 ```bash
 git clone https://github.com/Pratham-Prog861/code-compete.git
 cd code-compete
-```
-
-2.Install dependencies:
-
-```bash
 npm install
 ```
 
-3.Set up environment variables:
-   Create a `.env.local` file in the root directory:
+2. Create `.env.local`:
 
 ```env
 # Database
-DATABASE_URL=your_neon_database_url
+DATABASE_URL=postgresql://user:password@host/database
 
 # Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 ```
 
-4.Push the database schema:
+3. Initialize database:
 
 ```bash
-npx drizzle-kit push
+npm run db:push
+npm run db:seed
 ```
 
-5.Seed the database with sample problems:
-
-```bash
-npx tsx src/db/seed.ts
-```
-
-6.Run the development server:
+4. Run development server:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+Visit [http://localhost:3000](http://localhost:3000)
+
+## Available Scripts 📝
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run db:push` | Push schema changes to database |
+| `npm run db:seed` | Seed database with problems |
 
 ## Project Structure 📁
 
 ```bash
 code-compete/
 ├── src/
-│   ├── app/                    # Next.js app router pages
-│   │   ├── api/               # API routes
-│   │   │   └── submit/        # Code submission endpoint
-│   │   ├── leaderboard/       # Leaderboard page
-│   │   ├── problems/          # Problems listing and detail pages
-│   │   └── profile/           # User profile page
-│   ├── components/            # React components
-│   │   ├── code-editor.tsx    # Monaco code editor component
-│   │   ├── navbar.tsx         # Navigation bar
+│   ├── app/                    # Next.js App Router
+│   │   ├── api/submit/        # Code submission API
+│   │   ├── leaderboard/        # Global rankings page
+│   │   ├── problems/           # Problems list & detail
+│   │   ├── profile/            # User dashboard
+│   │   └── page.tsx           # Landing page
+│   ├── components/
+│   │   ├── navbar.tsx          # Navigation
+│   │   ├── code-editor.tsx     # Monaco editor
 │   │   └── ui/                # shadcn/ui components
-│   ├── db/                    # Database configuration
-│   │   ├── schema.ts          # Drizzle schema definitions
+│   ├── db/
+│   │   ├── schema.ts           # Drizzle schema
 │   │   ├── index.ts           # Database connection
-│   │   └── seed.ts            # Database seeding script
-│   └── lib/                   # Utility functions
-│       ├── piston.ts          # Piston API integration
-│       └── utils.ts           # Helper functions
-├── public/                    # Static assets
-└── drizzle.config.ts          # Drizzle ORM configuration
+│   │   └── seed.ts            # Problem seeder
+│   ├── lib/
+│   │   ├── piston.ts           # Code execution client
+│   │   └── utils.ts           # Utilities
+│   └── types/
+│       └── index.ts            # Shared TypeScript types
+├── drizzle.config.ts
+└── package.json
 ```
 
 ## Database Schema 📊
 
-- **problems**: Coding problems with descriptions, test cases, and starter code
-- **testCases**: Input/output test cases for each problem
-- **submissions**: User code submissions with status and timestamps
-- **solvedProblems**: Tracks which problems each user has solved
-- **userStats**: User statistics including points and problems solved
+### Tables
 
-## Features in Detail 🔍
+- **problems** - Title, description, difficulty, starter code, function params, comparison rules
+- **testCases** - Input, expected output, hidden flag
+- **submissions** - User submissions with status (AC/WA/RE/CE/TLE)
+- **solvedProblems** - Tracks unique solves per user
+- **userStats** - Total points, problems solved, timestamps
 
-### Problem Solving
+### Comparison Rules
 
-- View problem descriptions with markdown formatting
-- Write code in an integrated Monaco editor
-- Select from multiple programming languages
-- Run code and see detailed test results
+Each problem has a `comparisonRule`:
 
-### Points System
+- `strict` - Exact match required
+- `unordered` - Array results can be in any order
+- `numeric` - Floating point tolerance (1e-3)
 
-- Earn points by solving problems (10 points for Easy problems)
-- Points are awarded only on first successful solve
-- Track your total points and rank on the leaderboard
+## API Endpoints 🔌
 
-### Leaderboard
+### POST /api/submit
 
-- Real-time rankings based on total points
-- Displays user names, profile pictures, and email
-- Special badges for top 3 users
-- Shows problems solved count and total points
+Submit code for evaluation.
 
-## Scripts 📝
+**Request:**
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npx drizzle-kit push` - Push database schema changes
-- `npx tsx src/db/seed.ts` - Seed database with problems
+```json
+{
+  "problemId": 1,
+  "code": "function twoSum(nums, target) { ... }",
+  "language": "javascript"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "AC",
+  "output": "",
+  "testResults": [...],
+  "isFirstSolve": true,
+  "pointsEarned": 10
+}
+```
+
+## Problem Difficulty & Points
+
+| Difficulty | Points | Example |
+|------------|--------|---------|
+| Easy | 10 | Two Sum, Palindrome, Binary Search |
+| Medium | 20 | Maximum Subarray, 3Sum, Merge Intervals |
+| Hard | 30 | (Future problems) |
+
+## Design Tokens 🎨
+
+### Colors
+
+- Background: `#0a0a0b`
+- Primary Accent: `#06b6d4` (Cyan)
+- Easy: `#10b981` (Emerald)
+- Medium: `#f59e0b` (Amber)
+- Hard: `#ef4444` (Red)
+
+### Typography
+
+- Display: Syne (headings)
+- Body: Instrument Sans
+- Code: JetBrains Mono
 
 ## Contributing 🤝
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please submit issues and pull requests.
 
 ## License 📄
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - See [LICENSE](LICENSE) file.
 
 ## Acknowledgments 🙏
 
-- [Piston](https://github.com/engineer-man/piston) for code execution
-- [Clerk](https://clerk.com) for authentication
-- [shadcn/ui](https://ui.shadcn.com) for UI components
-- [Monaco Editor](https://microsoft.github.io/monaco-editor/) for the code editor
+- [Piston](https://github.com/engineer-man/piston) - Code execution engine
+- [Clerk](https://clerk.com) - Authentication
+- [shadcn/ui](https://ui.shadcn.com) - UI components
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
