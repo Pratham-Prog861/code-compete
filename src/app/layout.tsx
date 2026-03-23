@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import {
   ClerkProvider,
@@ -10,19 +9,10 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Code Compete",
-  description: "Compete with your friends and code with fun",
+  title: "CodeCompete - Master Algorithms. Compete Globally.",
+  description: "The ultimate platform for developers to master algorithmic problem-solving. Code in multiple languages, compete on leaderboards, and level up your skills.",
+  keywords: ["coding", "algorithms", "programming", "competetive programming", "leetcode", "code challenges"],
 };
 
 export default function RootLayout({
@@ -32,10 +22,8 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
+      <html lang="en" className="dark">
+        <body className="antialiased min-h-screen">
           {children}
         </body>
       </html>
