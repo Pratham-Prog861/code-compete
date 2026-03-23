@@ -11,31 +11,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Play, Check, X, Trophy } from "lucide-react";
+import { SUPPORTED_LANGUAGES, languageDisplayNames, type TestResult } from "@/types";
 
 interface CodeEditorProps {
   problemId: number;
-  starterCode: any;
+  starterCode: Record<string, string>;
 }
 
-const LANGUAGES = [
-  { id: "javascript", name: "JavaScript" },
-  { id: "python", name: "Python" },
-  { id: "cpp", name: "C++" },
-  { id: "go", name: "Go" },
-];
+const LANGUAGES = SUPPORTED_LANGUAGES.map((id) => ({
+  id,
+  name: languageDisplayNames[id],
+}));
 
 export default function CodeEditor({
   problemId,
   starterCode,
 }: CodeEditorProps) {
-  const [language, setLanguage] = useState("javascript");
+  const [language, setLanguage] = useState<string>(SUPPORTED_LANGUAGES[0]);
   const [code, setCode] = useState(
-    starterCode["javascript"] || "// Write your code here"
+    starterCode[language] || "// Write your code here"
   );
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [pointsEarned, setPointsEarned] = useState(0);
 
@@ -62,10 +61,18 @@ export default function CodeEditor({
         }),
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        data = await res.json();
+      } else {
+        setOutput(`Error: Server returned status ${res.status}`);
+        setIsRunning(false);
+        return;
+      }
 
-      if (data.error) {
-        setOutput(`Error: ${data.error}`);
+      if (!res.ok || data.error) {
+        setOutput(data.error || `Request failed with status ${res.status}`);
         return;
       }
 
@@ -84,9 +91,11 @@ export default function CodeEditor({
         setOutput(`Runtime Error:\n${data.output}`);
       } else if (data.status === 'WA') {
         setOutput('Wrong Answer - See test results below');
+      } else if (data.status === 'TLE') {
+        setOutput('Time Limit Exceeded');
       }
-    } catch (error) {
-      setOutput("Failed to submit code");
+    } catch {
+      setOutput("Failed to submit code - network error");
     } finally {
       setIsRunning(false);
     }
@@ -193,26 +202,33 @@ export default function CodeEditor({
                     )}
                     <span className="font-semibold">
                       Test Case {index + 1}
+                      {result.isHidden && " (Hidden)"}
                     </span>
                   </div>
-                  <div className="space-y-1 ml-6">
-                    <div>
-                      <span className="text-muted-foreground">Input: </span>
-                      <span className="font-mono">{result.input}</span>
+                  {result.isHidden ? (
+                    <div className="ml-6 text-muted-foreground italic">
+                      Hidden test case - details not shown
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">Expected: </span>
-                      <span className="font-mono">{result.expected}</span>
-                    </div>
-                    {!result.passed && (
+                  ) : (
+                    <div className="space-y-1 ml-6">
                       <div>
-                        <span className="text-muted-foreground">Your Output: </span>
-                        <span className="font-mono text-red-600 dark:text-red-400">
-                          {result.actual || "(no output)"}
-                        </span>
+                        <span className="text-muted-foreground">Input: </span>
+                        <span className="font-mono">{result.input}</span>
                       </div>
-                    )}
-                  </div>
+                      <div>
+                        <span className="text-muted-foreground">Expected: </span>
+                        <span className="font-mono">{result.expected}</span>
+                      </div>
+                      {!result.passed && (
+                        <div>
+                          <span className="text-muted-foreground">Your Output: </span>
+                          <span className="font-mono text-red-600 dark:text-red-400">
+                            {result.actual || "(no output)"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

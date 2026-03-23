@@ -4,13 +4,9 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Navbar from "@/components/navbar";
 import CodeEditor from "@/components/code-editor";
-import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
-import rehypeRaw from "rehype-raw";
-import "highlight.js/styles/github-dark.css"; // You might need to install highlight.js or add css manually if not present.
-// Actually rehype-highlight adds classes, we need styles.
-// I'll assume basic styling or add a link in layout.
+import DOMPurify from "isomorphic-dompurify";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -39,8 +35,8 @@ export default async function ProblemPage({ params }: PageProps) {
             </div>
 
             <div className="prose dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-p:leading-relaxed prose-headings:font-semibold">
-              <ReactMarkdown rehypePlugins={[rehypeHighlight, rehypeRaw]}>
-                {problem.description}
+              <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                {DOMPurify.sanitize(problem.description)}
               </ReactMarkdown>
             </div>
           </div>
@@ -50,7 +46,7 @@ export default async function ProblemPage({ params }: PageProps) {
         <div className="w-full lg:w-1/2 bg-muted/10 border-l">
           <CodeEditor
             problemId={problem.id}
-            starterCode={problem.starterCode}
+            starterCode={problem.starterCode as Record<string, string>}
           />
         </div>
       </main>

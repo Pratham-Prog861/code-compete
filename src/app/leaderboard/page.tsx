@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { userStats } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, sql, asc } from "drizzle-orm";
 import Navbar from "@/components/navbar";
 import {
   Table,
@@ -12,31 +12,73 @@ import {
 } from "@/components/ui/table";
 import { Trophy, Medal } from "lucide-react";
 import { clerkClient } from "@clerk/nextjs/server";
+import { type PaginatedResponse, type LeaderboardEntry } from "@/types";
 
-export default async function LeaderboardPage() {
-  // Get user stats ordered by points
+export const dynamic = "force-dynamic";
+
+interface PageProps {
+  searchParams: Promise<{ page?: string; limit?: string }>;
+}
+
+export default async function LeaderboardPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || "1", 10));
+  const pageSize = Math.min(50, Math.max(1, parseInt(params.limit || "20", 10)));
+  const offset = (page - 1) * pageSize;
+
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(userStats);
+  const total = countResult[0]?.count || 0;
+  const totalPages = Math.ceil(total / pageSize);
+
   const leaderboard = await db
     .select()
     .from(userStats)
-    .orderBy(desc(userStats.totalPoints))
-    .limit(50);
+    .orderBy(desc(userStats.totalPoints), asc(userStats.userId))
+    .limit(pageSize)
+    .offset(offset);
 
-  // Fetch user details from Clerk
   const client = await clerkClient();
   const userIds = leaderboard.map((entry) => entry.userId);
   const users = await client.users.getUserList({ userId: userIds });
 
-  // Create a map of userId to user details
   const userMap = new Map(
     users.data.map((user) => [
       user.id,
       {
-        name: user.firstName || user.username || user.emailAddresses[0]?.emailAddress.split("@")[0] || "Anonymous",
+        name:
+          user.firstName ||
+          user.username ||
+          user.emailAddresses[0]?.emailAddress.split("@")[0] ||
+          "Anonymous",
         imageUrl: user.imageUrl,
-        email: user.emailAddresses[0]?.emailAddress,
       },
     ])
   );
+
+  const entries: LeaderboardEntry[] = leaderboard.map((entry, index) => {
+    const userInfo = userMap.get(entry.userId);
+    const displayName = userInfo?.name || "Anonymous";
+    const initials = displayName.substring(0, 2).toUpperCase();
+
+    return {
+      rank: offset + index + 1,
+      userId: entry.userId,
+      displayName,
+      imageUrl: userInfo?.imageUrl || null,
+      problemsSolved: entry.problemsSolved,
+      totalPoints: entry.totalPoints,
+    };
+  });
+
+  const response: PaginatedResponse<LeaderboardEntry> = {
+    data: entries,
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
 
   const getRankColor = (rank: number) => {
     if (rank === 1) return "text-yellow-500";
@@ -72,7 +114,7 @@ export default async function LeaderboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {leaderboard.length === 0 ? (
+              {response.data.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={4}
@@ -82,61 +124,71 @@ export default async function LeaderboardPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                leaderboard.map((entry, index) => {
-                  const rank = index + 1;
-                  const userInfo = userMap.get(entry.userId);
-                  const displayName = userInfo?.name || "Anonymous";
-                  const initials = displayName.substring(0, 2).toUpperCase();
-                  
-                  return (
-                    <TableRow key={entry.userId}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {getRankIcon(rank)}
-                          <span className={getRankColor(rank)}>#{rank}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {userInfo?.imageUrl ? (
-                            <img
-                              src={userInfo.imageUrl}
-                              alt={displayName}
-                              className="h-8 w-8 rounded-full"
-                            />
-                          ) : (
-                            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-                              <span className="text-xs font-bold">
-                                {initials}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex flex-col">
-                            <span className="font-medium text-sm">
-                              {displayName}
+                response.data.map((entry) => (
+                  <TableRow key={entry.userId}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {getRankIcon(entry.rank)}
+                        <span className={getRankColor(entry.rank)}>#{entry.rank}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {entry.imageUrl ? (
+                          <img
+                            src={entry.imageUrl}
+                            alt={entry.displayName}
+                            className="h-8 w-8 rounded-full"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
+                            <span className="text-xs font-bold">
+                              {entry.displayName.substring(0, 2).toUpperCase()}
                             </span>
-                            {userInfo?.email && (
-                              <span className="text-xs text-muted-foreground">
-                                {userInfo.email}
-                              </span>
-                            )}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {entry.problemsSolved}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-bold text-primary">
-                          {entry.totalPoints}
+                        )}
+                        <span className="font-medium text-sm">
+                          {entry.displayName}
                         </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {entry.problemsSolved}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="font-bold text-primary">
+                        {entry.totalPoints}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-muted-foreground">
+            Page {response.page} of {response.totalPages} ({response.total} total)
+          </div>
+          <div className="flex gap-2">
+            {response.page > 1 && (
+              <a
+                href={`/leaderboard?page=${response.page - 1}`}
+                className="px-3 py-1 border rounded hover:bg-muted"
+              >
+                Previous
+              </a>
+            )}
+            {response.page < response.totalPages && (
+              <a
+                href={`/leaderboard?page=${response.page + 1}`}
+                className="px-3 py-1 border rounded hover:bg-muted"
+              >
+                Next
+              </a>
+            )}
+          </div>
         </div>
       </main>
     </div>
